@@ -74,6 +74,7 @@ public class MainActivity extends Activity {
 
     boolean enabled = true, toastStart = false;
     int warnPct = 60, dropPct = 15, decode = 1, scaleX10 = 10, interval = 300;
+    int lang = 0; // 0 = English, 1 = Arabic
 
     // home
     View home;
@@ -86,7 +87,7 @@ public class MainActivity extends Activity {
     // settings
     View settings;
     TextView savedLabel, rawLabel, toolOut;
-    Seg enSeg, popSeg, intSeg, decSeg, scaleSeg;
+    Seg langSeg, enSeg, popSeg, intSeg, decSeg, scaleSeg;
     Stepper warnStep, dropStep;
     TextView overrideBtn;
 
@@ -131,9 +132,9 @@ public class MainActivity extends Activity {
 
         LinearLayout head = row();
         TextView t = new TextView(this);
-        t.setText("Battery Watchdog"); t.setTextColor(pal.text); t.setTextSize(22);
+        t.setText(I18n.appTitle()); t.setTextColor(pal.text); t.setTextSize(22);
         head.addView(t, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        TextView gear = chip("Settings ›", new View.OnClickListener() { public void onClick(View v) { showSettings(true); } });
+        TextView gear = chip(I18n.settings(), new View.OnClickListener() { public void onClick(View v) { showSettings(true); } });
         gear.setPadding(dp(22), 0, dp(22), 0);
         head.addView(gear, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(52)));
         page.addView(head);
@@ -177,10 +178,10 @@ public class MainActivity extends Activity {
         LinearLayout right = column();
         tiles = row();
         tileRowA = row(); tileRowB = row();
-        tParked = new Tile("Parked before this drive");
-        tDrain  = new Tile("Parked drain, last 7 days");
-        tLowest = new Tile("Lowest start, last 7 days");
-        tSoh    = new Tile("HV battery health");
+        tParked = new Tile(I18n.tileParked());
+        tDrain  = new Tile(I18n.tileDrain());
+        tLowest = new Tile(I18n.tileLowest());
+        tSoh    = new Tile(I18n.tileHealth());
         tileRowA.addView(tParked.v, tileLp(false)); tileRowA.addView(tDrain.v, tileLp(true));
         tileRowB.addView(tLowest.v, tileLp(false)); tileRowB.addView(tSoh.v, tileLp(true));
         tiles.addView(tileRowA); tiles.addView(tileRowB);
@@ -205,14 +206,14 @@ public class MainActivity extends Activity {
         LinearLayout page = column();
 
         LinearLayout head = row();
-        TextView back = chip("‹ Back", new View.OnClickListener() { public void onClick(View v) { showSettings(false); } });
+        TextView back = chip(I18n.back(), new View.OnClickListener() { public void onClick(View v) { showSettings(false); } });
         back.setPadding(dp(22), 0, dp(22), 0);
         head.addView(back, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(52)));
         TextView t = new TextView(this);
-        t.setText("Settings"); t.setTextColor(pal.text); t.setTextSize(22);
+        t.setText(I18n.settingsTitle()); t.setTextColor(pal.text); t.setTextSize(22);
         t.setPadding(dp(18), 0, 0, 0);
         head.addView(t);
-        savedLabel = hint("Changes save by themselves and apply from the next drive.");
+        savedLabel = hint(I18n.autoSaveHint());
         savedLabel.setPadding(0, 0, 0, 0);
         savedLabel.setGravity(android.view.Gravity.RIGHT);
         head.addView(savedLabel, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -222,51 +223,63 @@ public class MainActivity extends Activity {
         cards.setGravity(android.view.Gravity.TOP);
 
         // ---- warnings
-        LinearLayout w = card("Warnings");
-        w.addView(caption("Monitor the 12V battery"));
-        enSeg = new Seg(new String[] { "On", "Off" }, new Setter() { public void set(int i) { enabled = i == 0; changed(); } });
+        LinearLayout w = card(I18n.cardWarnings());
+        w.addView(caption(I18n.selectLanguage()));
+        langSeg = new Seg(new String[] { "English", "العربية" }, new Setter() {
+            public void set(int i) {
+                if (lang != i) {
+                    lang = i;
+                    I18n.currentLang = lang;
+                    rebuildUI();
+                    changed();
+                }
+            }
+        });
+        w.addView(langSeg.row);
+        w.addView(caption(I18n.monitor12v()));
+        enSeg = new Seg(new String[] { I18n.optOn(), I18n.optOff() }, new Setter() { public void set(int i) { enabled = i == 0; changed(); } });
         w.addView(enSeg.row);
-        w.addView(caption("Warn when it starts below"));
+        w.addView(caption(I18n.warnStartsBelow()));
         warnStep = new Stepper(30, 90, warnPct, "%", new Setter() { public void set(int v) { warnPct = v; changed(); } });
         w.addView(warnStep.row);
-        w.addView(caption("Warn when it drops this much while parked"));
-        dropStep = new Stepper(5, 40, dropPct, " pts", new Setter() { public void set(int v) { dropPct = v; changed(); } });
+        w.addView(caption(I18n.warnDropsParked()));
+        dropStep = new Stepper(5, 40, dropPct, I18n.unitPts(), new Setter() { public void set(int v) { dropPct = v; changed(); } });
         w.addView(dropStep.row);
-        w.addView(caption("Pop-up when the car starts"));
-        popSeg = new Seg(new String[] { "Warnings only", "Every start" }, new Setter() { public void set(int i) { toastStart = i == 1; changed(); } });
+        w.addView(caption(I18n.popupOnStart()));
+        popSeg = new Seg(new String[] { I18n.popWarningsOnly(), I18n.popEveryStart() }, new Setter() { public void set(int i) { toastStart = i == 1; changed(); } });
         w.addView(popSeg.row);
 
         // ---- sensor
-        LinearLayout s = card("Sensor");
-        s.addView(caption("Read every (screen on)"));
-        intSeg = new Seg(new String[] { "1 min", "5 min", "15 min" }, new Setter() { public void set(int i) { interval = INTERVALS[i]; changed(); } });
+        LinearLayout s = card(I18n.cardSensor());
+        s.addView(caption(I18n.readEvery()));
+        intSeg = new Seg(new String[] { I18n.min1(), I18n.min5(), I18n.min15() }, new Setter() { public void set(int i) { interval = INTERVALS[i]; changed(); } });
         s.addView(intSeg.row);
-        s.addView(caption("Decode the value as"));
-        decSeg = new Seg(DECODE, new Setter() { public void set(int i) { decode = i; changed(); } });
+        s.addView(caption(I18n.decodeValueAs()));
+        decSeg = new Seg(new String[] { I18n.decodeAuto(), I18n.decodeInteger(), I18n.decodeFloat() }, new Setter() { public void set(int i) { decode = i; changed(); } });
         s.addView(decSeg.row);
-        s.addView(caption("Scale"));
-        scaleSeg = new Seg(new String[] { "1 raw = 1 %", "1 raw = 0.5 %" }, new Setter() { public void set(int i) { scaleX10 = i == 0 ? 10 : 5; changed(); } });
+        s.addView(caption(I18n.scale()));
+        scaleSeg = new Seg(new String[] { I18n.scale1(), I18n.scale05() }, new Setter() { public void set(int i) { scaleX10 = i == 0 ? 10 : 5; changed(); } });
         s.addView(scaleSeg.row);
-        s.addView(tool("Read sensor now", new View.OnClickListener() { public void onClick(View v) { readNow(); } }));
+        s.addView(tool(I18n.readSensorNow(), new View.OnClickListener() { public void onClick(View v) { readNow(); } }));
         rawLabel = hint("");
         s.addView(rawLabel);
 
         // ---- tools
-        LinearLayout tl = card("Tools");
-        tl.addView(tool("Battery report\u2026", new View.OnClickListener() { public void onClick(View v) { showReport(); } }));
-        tl.addView(tool("Warning history", new View.OnClickListener() { public void onClick(View v) { showWarnings(); } }));
-        tl.addView(tool("Diagnostics", new View.OnClickListener() { public void onClick(View v) { showDiagnostics(); } }));
-        tl.addView(tool("Export to USB", new View.OnClickListener() { public void onClick(View v) { exportToUsb(); } }));
-        tl.addView(tool("Share data…", new View.OnClickListener() { public void onClick(View v) { showShareSteps(); } }));
+        LinearLayout tl = card(I18n.cardTools());
+        tl.addView(tool(I18n.batteryReport(), new View.OnClickListener() { public void onClick(View v) { showReport(); } }));
+        tl.addView(tool(I18n.warningHistory(), new View.OnClickListener() { public void onClick(View v) { showWarnings(); } }));
+        tl.addView(tool(I18n.diagnostics(), new View.OnClickListener() { public void onClick(View v) { showDiagnostics(); } }));
+        tl.addView(tool(I18n.exportToUsb(), new View.OnClickListener() { public void onClick(View v) { exportToUsb(); } }));
+        tl.addView(tool(I18n.shareData(), new View.OnClickListener() { public void onClick(View v) { showShareSteps(); } }));
         LinearLayout pair = row();
-        pair.addView(tool("Restart monitor", new View.OnClickListener() { public void onClick(View v) { restartService(); } }), tileLp(false));
-        pair.addView(tool("Test run (10 s)", new View.OnClickListener() { public void onClick(View v) { testRun(); } }), tileLp(true));
+        pair.addView(tool(I18n.restartMonitor(), new View.OnClickListener() { public void onClick(View v) { restartService(); } }), tileLp(false));
+        pair.addView(tool(I18n.testRun10s(), new View.OnClickListener() { public void onClick(View v) { testRun(); } }), tileLp(true));
         pair.setPadding(0, dp(10), 0, 0);
         tl.addView(pair);
-        TextView clear = tool("Clear history…", new View.OnClickListener() { public void onClick(View v) { confirmClear(); } });
+        TextView clear = tool(I18n.clearHistory(), new View.OnClickListener() { public void onClick(View v) { confirmClear(); } });
         clear.setTextColor(pal.red);
         tl.addView(clear);
-        overrideBtn = tool("Unverified firmware: use built-in numbers…", new View.OnClickListener() { public void onClick(View v) { confirmOverride(); } });
+        overrideBtn = tool(I18n.unverifiedOverride(), new View.OnClickListener() { public void onClick(View v) { confirmOverride(); } });
         overrideBtn.setVisibility(View.GONE);
         tl.addView(overrideBtn);
         toolOut = hint("");
@@ -277,6 +290,20 @@ public class MainActivity extends Activity {
         cards.addView(scroll(tl), hfill(dp(14), 0, 0, 0));
         page.addView(cards, vfill(0, dp(12), 0, 0));
         return page;
+    }
+
+    void rebuildUI() {
+        boolean wasSettings = settings != null && settings.getVisibility() == View.VISIBLE;
+        rootView.removeAllViews();
+        home = buildHome();
+        settings = buildSettings();
+        settings.setVisibility(wasSettings ? View.VISIBLE : View.GONE);
+        home.setVisibility(wasSettings ? View.GONE : View.VISIBLE);
+        rootView.addView(home);
+        rootView.addView(settings);
+        refreshButtons();
+        applySplit();
+        refreshData();
     }
 
     void showSettings(boolean on) {
@@ -313,12 +340,11 @@ public class MainActivity extends Activity {
     }
 
     void confirmClear() {
-        new AlertDialog.Builder(this).setTitle("Clear history?")
-            .setMessage("This deletes every logged reading, drive and warning on this car. Settings are kept. "
-                + "If you might share your data later, export it to USB first.")
-            .setPositiveButton("Clear", new DialogInterface.OnClickListener() {
+        new AlertDialog.Builder(this).setTitle(I18n.clearTitle())
+            .setMessage(I18n.clearMsg())
+            .setPositiveButton(I18n.btnClear(), new DialogInterface.OnClickListener() {
                 public void onClick(DialogInterface di, int w) { clearHistory(); } })
-            .setNegativeButton("Cancel", null).show();
+            .setNegativeButton(I18n.btnCancel(), null).show();
     }
 
     @Override
@@ -347,7 +373,7 @@ public class MainActivity extends Activity {
     // isn't reported (about 29 % in photos), so a third is kept clear and the
     // tiles go two by two to fit.
     static final String SPLIT_SETTING = "split_screen_status";
-    View rootView;
+    android.widget.FrameLayout rootView;
     boolean compact, splitObserved;
     final ContentObserver splitObserver = new ContentObserver(handler) {
         @Override public void onChange(boolean selfChange) { applySplit(); }
@@ -389,40 +415,40 @@ public class MainActivity extends Activity {
         List<long[]> drives = loadDrives(status);
         legend.setText(legendText());
         if (paused && !verified()) {
-            dial.show(-1, "Paused", pal.amber);
-            setPill("Paused", pal.amber);
-            updLabel.setText("Nothing is read from the car.");
+            dial.show(-1, I18n.statusPaused(), pal.amber);
+            setPill(I18n.statusPaused(), pal.amber);
+            updLabel.setText(I18n.nothingRead());
             ctxLabel.setText("");
             setBanner("interface_mismatch".equals(verifyState)
-                ? "The car's telematics service isn't the one this package was built for, so nothing is read."
-                : "This firmware isn't verified yet, so nothing is read from the car. See Settings → Tools → Diagnostics.");
+                ? (I18n.isAr() ? "خدمة الاتصال عن بعد للسيارة ليست هي الخدمة المصممة لهذه الحزمة، لذلك لا يتم قراءة أي بيانات." : "The car's telematics service isn't the one this package was built for, so nothing is read.")
+                : (I18n.isAr() ? "هذا الفيرموير غير معتمد بعد، لذلك لا يتم قراءة أي شيء من السيارة. راجع الإعدادات ← الأدوات ← التشخيص." : "This firmware isn't verified yet, so nothing is read from the car. See Settings → Tools → Diagnostics."));
             tParked.set("--", "", pal.text, false); tDrain.set("--", "", pal.text, false);
             tLowest.set("--", "", pal.text, false); tSoh.set("--", "", pal.text, false);
             chart.setData(lastN(drives, 30), warnPct * 10, dropPct * 10);
             return;
         }
         boolean low = p >= 0 && p < warnPct * 10;
-        if ("disabled".equals(state)) { dial.show(-1, "Off", pal.muted); setPill("Monitor off", pal.muted); }
-        else if (p >= 0) { dial.show(p, fmt10(p) + "%", low ? pal.amber : pal.green); setPill(low ? "Low" : "OK", low ? pal.amber : pal.green); }
+        if ("disabled".equals(state)) { dial.show(-1, I18n.statusOff(), pal.muted); setPill(I18n.statusMonitorOff(), pal.muted); }
+        else if (p >= 0) { dial.show(p, fmt10(p) + "%", low ? pal.amber : pal.green); setPill(low ? I18n.statusLow() : I18n.statusOK(), low ? pal.amber : pal.green); }
         else if (state.length() == 0) { dial.show(-1, "…", pal.muted); setPill(null, 0); }
-        else { dial.show(-1, "--", pal.muted); setPill("No reading", pal.muted); }
-        updLabel.setText(upd.length() > 0 ? "Read " + time(parse(upd, 0))
-                : "No reading yet. If this lasts, see Settings → Tools → Diagnostics.");
+        else { dial.show(-1, "--", pal.muted); setPill(I18n.statusNoReading(), pal.muted); }
+        updLabel.setText(upd.length() > 0 ? (I18n.isAr() ? "قراءة " : "Read ") + time(parse(upd, 0))
+                : I18n.noReadingYet());
         // context: main battery charge and outside temperature
         int hv = parse(kv(status, "hv10"), -1);
         int tc = parse(kv(status, "temp_c"), Integer.MIN_VALUE);
         StringBuilder cx = new StringBuilder();
-        if (hv >= 0) cx.append("Main battery ").append(fmt10(hv)).append("%");
+        if (hv >= 0) cx.append(I18n.mainBattery()).append(" ").append(fmt10(hv)).append("%");
         if (tc != Integer.MIN_VALUE) {
             if (cx.length() > 0) cx.append("\n");
-            cx.append("Outside ").append(Math.round(tc * 9 / 5f + 32)).append("°F");
+            cx.append(I18n.outside()).append(" ").append(Math.round(tc * 9 / 5f + 32)).append("°F");
         }
         ctxLabel.setText(cx.toString());
 
         // banner: the latest warning, else a decode problem, else nothing
         boolean noRead = "no_reading".equals(state);
         if (warn.length() > 0) setBanner("⚠  " + warn);
-        else if (noRead) setBanner("The 12V value couldn't be decoded. Check Settings → Sensor.");
+        else if (noRead) setBanner(I18n.isAr() ? "تعذر فك تشفير قيمة 12V. تحقق من الإعدادات ← الحساس." : "The 12V value couldn't be decoded. Check Settings → Sensor.");
         else setBanner(null);
 
         // tile: parked time before this drive, and how the 12V changed meanwhile
@@ -431,25 +457,30 @@ public class MainActivity extends Activity {
         int pRate = parse(kv(status, "parked_rate10_day"), Integer.MIN_VALUE);
         if (pMin >= 0 && pDrop != Integer.MIN_VALUE) {
             boolean bad = pDrop >= dropPct * 10;
-            String sub = duration(pMin) + (pRate != Integer.MIN_VALUE && pDrop > 0 ? "  ·  −" + fmt10(pRate) + "/day" : "");
-            tParked.set(pDrop > 0 ? "−" + fmt10(pDrop) + " pts" : pDrop < 0 ? "+" + fmt10(-pDrop) + " pts" : "No change",
+            String dayUnit = I18n.isAr() ? "/يوم" : "/day";
+            String sub = duration(pMin) + (pRate != Integer.MIN_VALUE && pDrop > 0 ? "  ·  −" + fmt10(pRate) + dayUnit : "");
+            tParked.set(pDrop > 0 ? "−" + fmt10(pDrop) + I18n.unitPts() : pDrop < 0 ? "+" + fmt10(-pDrop) + I18n.unitPts() : I18n.noChange(),
                     sub, bad ? pal.amber : pal.text, bad);
         } else {
-            tParked.set("--", "Shows after a park", pal.text, false);
+            tParked.set("--", I18n.showsAfterPark(), pal.text, false);
         }
 
         // tiles: the last 7 days
         int[] wk = week(drives);   // {drives, lowest start, drain/day (or MIN), recharges}
         if (wk[0] == 0) {
-            tDrain.set("--", "No drives yet", pal.text, false);
-            tLowest.set("--", "No drives yet", pal.text, false);
+            tDrain.set("--", I18n.noDrivesYet(), pal.text, false);
+            tLowest.set("--", I18n.noDrivesYet(), pal.text, false);
         } else {
-            String rech = wk[3] + (wk[3] == 1 ? " recharge" : " recharges") + " while parked";
-            if (wk[2] == Integer.MIN_VALUE) tDrain.set("--", "Not enough parked time yet", pal.text, false);
-            else tDrain.set((wk[2] > 0 ? "−" + fmt10(wk[2]) : wk[2] < 0 ? "+" + fmt10(-wk[2]) : "0.0") + " /day",
+            String rech = I18n.isAr() ? (wk[3] + " شحن أثناء التوقف") : (wk[3] + (wk[3] == 1 ? " recharge" : " recharges") + " while parked");
+            if (wk[2] == Integer.MIN_VALUE) tDrain.set("--", I18n.notEnoughParkedTime(), pal.text, false);
+            else {
+                String dayUnit = I18n.isAr() ? " /يوم" : " /day";
+                tDrain.set((wk[2] > 0 ? "−" + fmt10(wk[2]) : wk[2] < 0 ? "+" + fmt10(-wk[2]) : "0.0") + dayUnit,
                     rech, pal.text, false);
+            }
             boolean lowStart = wk[1] < warnPct * 10;
-            tLowest.set(fmt10(wk[1]) + "%", wk[0] + (wk[0] == 1 ? " drive" : " drives"), lowStart ? pal.amber : pal.text, lowStart);
+            String driveStr = I18n.isAr() ? (wk[0] + " رحلة") : (wk[0] + (wk[0] == 1 ? " drive" : " drives"));
+            tLowest.set(fmt10(wk[1]) + "%", driveStr, lowStart ? pal.amber : pal.text, lowStart);
         }
 
         int sohNow = readSoh();
@@ -463,12 +494,12 @@ public class MainActivity extends Activity {
 
     CharSequence legendText() {
         android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder();
-        b.append("Last 30 drives      ");
-        legendItem(b, "●", pal.text, " start   ");
-        legendItem(b, "●", pal.accent, " end   ");
-        legendItem(b, "- -", pal.park, " parked   ");
-        legendItem(b, "- -", pal.green, " recharged   ");
-        legendItem(b, "—", pal.amber, " warn below " + warnPct + "%");
+        b.append(I18n.last30Drives());
+        legendItem(b, "●", pal.text, I18n.legendStart());
+        legendItem(b, "●", pal.accent, I18n.legendEnd());
+        legendItem(b, "- -", pal.park, I18n.legendParked());
+        legendItem(b, "- -", pal.green, I18n.legendRecharged());
+        legendItem(b, "—", pal.amber, I18n.legendWarnBelow(warnPct));
         return b;
     }
 
@@ -574,10 +605,10 @@ public class MainActivity extends Activity {
 
     // green >= 90, amber 75-89, red < 75, plain if unknown
     void showSoh(int v) {
-        if (v < 0)        tSoh.set("--", "Not available", pal.text, false);
-        else if (v >= 90) tSoh.set(v + "%", "Good", pal.green, false);
-        else if (v >= 75) tSoh.set(v + "%", "Fair", pal.amber, true);
-        else              tSoh.set(v + "%", "Low", pal.red, true);
+        if (v < 0)        tSoh.set("--", I18n.notAvailable(), pal.text, false);
+        else if (v >= 90) tSoh.set(v + "%", I18n.statusGood(), pal.green, false);
+        else if (v >= 75) tSoh.set(v + "%", I18n.statusFair(), pal.amber, true);
+        else              tSoh.set(v + "%", I18n.statusLow(), pal.red, true);
     }
 
     void readNow() {
@@ -1369,6 +1400,8 @@ public class MainActivity extends Activity {
         decode     = clamp(readInt("decode", 1), 0, 2);
         scaleX10   = readInt("scale_x10", 10) == 5 ? 5 : 10;
         interval   = readInt("interval_s", 300);
+        lang       = clamp(readInt("lang", 0), 0, 1);
+        I18n.currentLang = lang;
     }
 
     /** "" when saved, else the error */
@@ -1380,12 +1413,14 @@ public class MainActivity extends Activity {
             + "; echo " + dropPct + " > " + STATE + "/drop_pct"
             + "; echo " + decode + " > " + STATE + "/decode"
             + "; echo " + scaleX10 + " > " + STATE + "/scale_x10"
-            + "; echo " + interval + " > " + STATE + "/interval_s";
+            + "; echo " + interval + " > " + STATE + "/interval_s"
+            + "; echo " + lang + " > " + STATE + "/lang";
         String r = runRoot(cmd);
         return r.startsWith("ERR") ? r : "";
     }
 
     void refreshButtons() {
+        if (langSeg != null) langSeg.select(lang);
         enSeg.select(enabled ? 0 : 1);
         popSeg.select(toastStart ? 1 : 0);
         int i = 0; while (i < INTERVALS.length && INTERVALS[i] != interval) i++;
@@ -1393,6 +1428,7 @@ public class MainActivity extends Activity {
         decSeg.select(decode);
         scaleSeg.select(scaleX10 == 10 ? 0 : 1);
         warnStep.show(warnPct);
+        dropStep.setUnit(I18n.unitPts());
         dropStep.show(dropPct);
     }
 
@@ -1448,17 +1484,25 @@ public class MainActivity extends Activity {
         }
     }
 
+    void updateTileCaptions() {
+        if (tParked != null) tParked.setCaption(I18n.tileParked());
+        if (tDrain != null)  tDrain.setCaption(I18n.tileDrain());
+        if (tLowest != null) tLowest.setCaption(I18n.tileLowest());
+        if (tSoh != null)    tSoh.setCaption(I18n.tileHealth());
+    }
+
     /** A small card: a caption, one value, a line under it. */
     class Tile {
         final LinearLayout v;
+        final TextView captionView;
         final TextView value, sub;
         Tile(String caption) {
             v = column();
             v.setPadding(dp(14), dp(10), dp(14), dp(10));
-            TextView t = new TextView(MainActivity.this);
-            t.setText(caption); t.setTextColor(pal.muted); t.setTextSize(14);
-            t.setSingleLine(true); t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            v.addView(t);
+            captionView = new TextView(MainActivity.this);
+            captionView.setText(caption); captionView.setTextColor(pal.muted); captionView.setTextSize(14);
+            captionView.setSingleLine(true); captionView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            v.addView(captionView);
             value = new TextView(MainActivity.this);
             value.setTextSize(26); value.setIncludeFontPadding(false);
             value.setPadding(0, dp(4), 0, dp(2));
@@ -1468,6 +1512,9 @@ public class MainActivity extends Activity {
             sub.setSingleLine(true); sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
             v.addView(sub);
             set("--", "", pal.text, false);
+        }
+        void setCaption(String text) {
+            if (captionView != null) captionView.setText(text);
         }
         void set(String val, String line, int color, boolean flag) {
             value.setText(val); value.setTextColor(color);
@@ -1501,7 +1548,7 @@ public class MainActivity extends Activity {
         final LinearLayout row;
         final TextView value;
         final int min, max;
-        final String unit;
+        String unit;
         final Setter s;
         int v;
         Stepper(int min, int max, int start, String unit, Setter s) {
@@ -1514,6 +1561,7 @@ public class MainActivity extends Activity {
             row.addView(value, new LinearLayout.LayoutParams(0, dp(52), 1f));
             row.addView(button(1), new LinearLayout.LayoutParams(dp(76), dp(52)));
         }
+        void setUnit(String u) { unit = u; show(v); }
         void show(int n) { v = n; value.setText(n + unit); }
         TextView button(final int dir) {
             final TextView b = chip(dir < 0 ? "−" : "+", null);
@@ -1586,7 +1634,7 @@ public class MainActivity extends Activity {
             }
             float wy = bottom - (bottom - top) * (warn10 / 10f - lo) / span;
             c.drawLine(left, wy, w, wy, warnP);
-            if (drives.isEmpty()) { c.drawText("No drives yet. They appear here as you drive.", left + 12 * d, h / 2, text); return; }
+            if (drives.isEmpty()) { c.drawText(I18n.isAr() ? "لا توجد رحلات بعد. ستظهر هنا أثناء القيادة." : "No drives yet. They appear here as you drive.", left + 12 * d, h / 2, text); return; }
 
             int n = drives.size();
             float slot = (w - left - 8 * d) / Math.max(n, 6);
@@ -1637,6 +1685,11 @@ public class MainActivity extends Activity {
     static long parseL(String s, long d) { try { return Long.parseLong(s.trim()); } catch (Exception e) { return d; } }
     static String fmt10(int v) { return (v / 10) + "." + (v % 10); }
     static String duration(int min) {
+        if (I18n.isAr()) {
+            if (min < 60) return min + " دقيقة";
+            if (min < 48 * 60) return (min / 60) + " س " + (min % 60) + " د";
+            return (min / 1440) + " ي " + ((min % 1440) / 60) + " س";
+        }
         if (min < 60) return min + " min";
         if (min < 48 * 60) return (min / 60) + " h " + (min % 60) + " min";
         return (min / 1440) + " d " + ((min % 1440) / 60) + " h";
