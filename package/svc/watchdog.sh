@@ -282,6 +282,8 @@ load_cfg() {
     DECODE=$(cfg decode 1)        # 0 auto, 1 int = probe-confirmed, 2 float
     SCALE=$(cfg scale_x10 10)     # % per raw unit, x10: 10 = 1 %, 5 = 0.5 %
     TOAST_START=$(cfg toast_start 0)
+    TEMP_UNIT=$(cfg temp_unit 0)  # 0 Celsius (default), 1 Fahrenheit
+    LANG=$(cfg lang 0)            # 0 English, 1 Arabic
     MAX_LINES=$(cfg max_lines 4000)
     POLL=$(cfg poll_s 15)
     MIN_OFF=$(cfg min_off_s 600)  # screen off at least this long = parked = a new drive
@@ -317,7 +319,11 @@ session_start() {   # reason
     [ -r "$STATE/sess_start" ] && read -r PS_T PS_P < "$STATE/sess_start"
     [ -r "$STATE/last" ] && read -r PE_T PE_P < "$STATE/last"
 
-    [ "$S_PCT10" -lt $((WARN_PCT * 10)) ] && WARN_TEXT="12V battery low: $(fmt10 "$S_PCT10")%"
+    if [ "$LANG" = "1" ]; then
+        [ "$S_PCT10" -lt $((WARN_PCT * 10)) ] && WARN_TEXT="شحن بطارية 12V منخفض: $(fmt10 "$S_PCT10")%"
+    else
+        [ "$S_PCT10" -lt $((WARN_PCT * 10)) ] && WARN_TEXT="12V battery low: $(fmt10 "$S_PCT10")%"
+    fi
     PARK_MIN=""; PARK_DROP10=""; PARK_RATE10=""
     if [ -n "$PE_P" ] && [ "$PE_P" -ge 0 ] 2>/dev/null; then
         DROP=$((PE_P - S_PCT10))
@@ -328,7 +334,11 @@ session_start() {   # reason
             [ "$PARK_MIN" -ge 60 ] && PARK_RATE10=$(( DROP * 1440 / PARK_MIN ))
         fi
         if [ "$DROP" -ge $((DROP_PCT * 10)) ]; then
-            W="12V dropped $(fmt10 "$DROP") pts while parked: $(fmt10 "$PE_P")% -> $(fmt10 "$S_PCT10")%"
+            if [ "$LANG" = "1" ]; then
+                W="انخفض شحن بطارية 12V بمقدار $(fmt10 "$DROP") نقطة أثناء التوقف: $(fmt10 "$PE_P")% -> $(fmt10 "$S_PCT10")%"
+            else
+                W="12V dropped $(fmt10 "$DROP") pts while parked: $(fmt10 "$PE_P")% -> $(fmt10 "$S_PCT10")%"
+            fi
             WARN_TEXT=${WARN_TEXT:+$WARN_TEXT; }$W
         fi
         if [ -n "$PS_P" ] && [ "$PS_P" -ge 0 ] 2>/dev/null && [ "$PS_T" -gt 0 ] 2>/dev/null && [ "$PE_T" -gt "$PS_T" ] 2>/dev/null; then
@@ -337,7 +347,11 @@ session_start() {   # reason
             PREV_LINE="$PS_T $DRIVE_MIN $PS_P $PE_P"
             echo "$PREV_LINE" >> "$STATE/sessions"
             if [ "$DRIVE_MIN" -ge 20 ] && [ "$DRIVE_MIN" -le 1440 ] && [ "$REC" -lt 0 ]; then
-                W="12V did not recover on last drive: $(fmt10 "$PS_P")% -> $(fmt10 "$PE_P")% over ${DRIVE_MIN} min"
+                if [ "$LANG" = "1" ]; then
+                    W="لم يستعد شحن بطارية 12V في الرحلة الأخيرة: $(fmt10 "$PS_P")% -> $(fmt10 "$PE_P")% خلال ${DRIVE_MIN} دقيقة"
+                else
+                    W="12V did not recover on last drive: $(fmt10 "$PS_P")% -> $(fmt10 "$PE_P")% over ${DRIVE_MIN} min"
+                fi
                 WARN_TEXT=${WARN_TEXT:+$WARN_TEXT; }$W
             fi
         fi
@@ -345,10 +359,29 @@ session_start() {   # reason
     put "$STATE/sess_start" "$SESS_T $SESS_P"
     put "$STATE/last" "$SESS_T $SESS_P"
     if [ -n "$WARN_TEXT" ]; then
-        [ -n "$TEMP_C" ] && WARN_TEXT="$WARN_TEXT, outside $(( TEMP_C * 9 / 5 + 32 ))F"
+        if [ -n "$TEMP_C" ]; then
+            if [ "$TEMP_UNIT" = "1" ]; then
+                _tf=$(( TEMP_C * 9 / 5 + 32 ))
+                if [ "$LANG" = "1" ]; then
+                    WARN_TEXT="$WARN_TEXT، الحرارة الخارجية ${_tf}°F"
+                else
+                    WARN_TEXT="$WARN_TEXT, outside ${_tf}F"
+                fi
+            else
+                if [ "$LANG" = "1" ]; then
+                    WARN_TEXT="$WARN_TEXT، الحرارة الخارجية ${TEMP_C}°م"
+                else
+                    WARN_TEXT="$WARN_TEXT, outside ${TEMP_C}°C"
+                fi
+            fi
+        fi
         log "WARN $WARN_TEXT"; echo "$(now) $WARN_TEXT" >> "$STATE/warnings"; toast "$WARN_TEXT"
     elif [ "$TOAST_START" = "1" ]; then
-        toast "12V battery $(fmt10 "$S_PCT10")%"
+        if [ "$LANG" = "1" ]; then
+            toast "شحن بطارية 12V: $(fmt10 "$S_PCT10")%"
+        else
+            toast "12V battery $(fmt10 "$S_PCT10")%"
+        fi
     fi
     write_status ok
 }

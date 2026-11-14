@@ -10,6 +10,8 @@ mkdir -p "$STATE" 2>/dev/null
 [ -r "$STATE/decode" ]      || echo 1   > "$STATE/decode"
 [ -r "$STATE/scale_x10" ]   || echo 10  > "$STATE/scale_x10"
 [ -r "$STATE/toast_start" ] || echo 0   > "$STATE/toast_start"
+[ -r "$STATE/temp_unit" ]   || echo 0   > "$STATE/temp_unit"
+[ -r "$STATE/lang" ]        || echo 1   > "$STATE/lang"
 # Start (or restart) the monitor once NEMESIS has registered the new service,
 # so an update takes effect without a reboot. Runs in the background.
 ( sleep 15

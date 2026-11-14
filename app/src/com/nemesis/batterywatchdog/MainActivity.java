@@ -74,6 +74,7 @@ public class MainActivity extends Activity {
 
     boolean enabled = true, toastStart = false;
     int warnPct = 60, dropPct = 15, decode = 1, scaleX10 = 10, interval = 300;
+    int tempUnit = 0; // 0 = Celsius (default), 1 = Fahrenheit
     int lang = 0; // 0 = English, 1 = Arabic
 
     // home
@@ -87,7 +88,7 @@ public class MainActivity extends Activity {
     // settings
     View settings;
     TextView savedLabel, rawLabel, toolOut;
-    Seg langSeg, enSeg, popSeg, intSeg, decSeg, scaleSeg;
+    Seg langSeg, tempSeg, enSeg, popSeg, intSeg, decSeg, scaleSeg;
     Stepper warnStep, dropStep;
     TextView overrideBtn;
 
@@ -236,6 +237,17 @@ public class MainActivity extends Activity {
             }
         });
         w.addView(langSeg.row);
+        w.addView(caption(I18n.tempUnitTitle()));
+        tempSeg = new Seg(new String[] { I18n.tempC(), I18n.tempF() }, new Setter() {
+            public void set(int i) {
+                if (tempUnit != i) {
+                    tempUnit = i;
+                    refreshData();
+                    changed();
+                }
+            }
+        });
+        w.addView(tempSeg.row);
         w.addView(caption(I18n.monitor12v()));
         enSeg = new Seg(new String[] { I18n.optOn(), I18n.optOff() }, new Setter() { public void set(int i) { enabled = i == 0; changed(); } });
         w.addView(enSeg.row);
@@ -335,8 +347,8 @@ public class MainActivity extends Activity {
         if (!dirty) return;
         dirty = false;
         String r = saveConfig();
-        if (r.length() > 0) { toast("Couldn't save: " + r); savedLabel.setTextColor(pal.red); savedLabel.setText("Not saved: " + r); }
-        else { savedLabel.setTextColor(pal.muted); savedLabel.setText("Saved. Applies from the next drive."); }
+        if (r.length() > 0) { toast(I18n.notSaved(r)); savedLabel.setTextColor(pal.red); savedLabel.setText(I18n.notSaved(r)); }
+        else { savedLabel.setTextColor(pal.muted); savedLabel.setText(I18n.saved()); }
     }
 
     void confirmClear() {
@@ -441,7 +453,11 @@ public class MainActivity extends Activity {
         if (hv >= 0) cx.append(I18n.mainBattery()).append(" ").append(fmt10(hv)).append("%");
         if (tc != Integer.MIN_VALUE) {
             if (cx.length() > 0) cx.append("\n");
-            cx.append(I18n.outside()).append(" ").append(Math.round(tc * 9 / 5f + 32)).append("°F");
+            if (tempUnit == 1) {
+                cx.append(I18n.outside()).append(" ").append(Math.round(tc * 9 / 5f + 32)).append("°F");
+            } else {
+                cx.append(I18n.outside()).append(" ").append(tc).append(I18n.isAr() ? "°م" : "°C");
+            }
         }
         ctxLabel.setText(cx.toString());
 
@@ -612,14 +628,14 @@ public class MainActivity extends Activity {
     }
 
     void readNow() {
-        if (txSoc <= 0) { rawLabel.setText("Not verified on this firmware, so nothing was read."); return; }
+        if (txSoc <= 0) { rawLabel.setText(I18n.readNowNotVerified()); return; }
         String r = runRoot("service call tm_hscan_service " + txSoc).trim();
         String shown = r;
         int i = r.indexOf("Parcel(");
         if (i >= 0) {
             String[] w = r.substring(i + 7).trim().split("\\s+");
             if (w.length >= 2 && "00000000".equals(w[0])) {
-                try { shown = "Sensor now: " + Long.parseLong(w[1], 16) + "%   (raw " + w[1] + ")"; } catch (Exception e) { }
+                try { shown = I18n.sensorNow(Long.parseLong(w[1], 16), w[1]); } catch (Exception e) { }
             }
         }
         rawLabel.setText(shown);
@@ -811,19 +827,15 @@ public class MainActivity extends Activity {
     }
 
     void confirmOverride() {
-        new AlertDialog.Builder(this).setTitle("Use built-in numbers on this firmware?")
-            .setMessage("This firmware (" + fw + ") hasn't been verified, and Battery Watchdog couldn't confirm the "
-                + "transaction numbers by name. On a different firmware the same numbers can reach a different "
-                + "function, including ones that reset or change settings.\n\nOnly continue if you've run the USB "
-                + "probe on this car and its txn 137 / 74 / 214 values look like a 12V %, a main battery %, and a "
-                + "health index (see docs/TECHNICAL.md).")
-            .setPositiveButton("I've checked, use them", new DialogInterface.OnClickListener() {
+        new AlertDialog.Builder(this).setTitle(I18n.overrideTitle())
+            .setMessage(I18n.overrideMsg(fw))
+            .setPositiveButton(I18n.btnUseBuiltin(), new DialogInterface.OnClickListener() {
                 public void onClick(DialogInterface di, int w) {
                     txSoc = 137; txHv = 74; txSoh = 214; saveTxn("manual-override");
                     verifyState = "override"; verifySource = "manual-override";
-                    toast("Saved. The monitor starts within a minute."); refreshData();
+                    toast(I18n.overrideSaved()); refreshData();
                 } })
-            .setNegativeButton("Cancel", null).show();
+            .setNegativeButton(I18n.btnCancel(), null).show();
     }
 
     boolean verified() { return txSoc > 0; }
@@ -846,30 +858,19 @@ public class MainActivity extends Activity {
             return;
         }
         p.edit().putBoolean(ASKED_SHARE, true).apply();
-        new AlertDialog.Builder(this).setTitle("Help improve Battery Watchdog?")
-            .setMessage("The warnings are simple for now. Logs from real cars, especially ones whose 12V battery "
-                + "later failed, would help build smarter checks for everyone.\n\n"
-                + "This is completely optional, and nothing is ever sent from your car. If you'd like to help, "
-                + "after a few weeks of driving you can export your data to a USB drive and share it on GitHub.\n\n"
-                + "You won't be asked again. The steps are always in Settings \u2192 Tools \u2192 Share data.")
-            .setPositiveButton("Show me how", new DialogInterface.OnClickListener() {
+        new AlertDialog.Builder(this).setTitle(I18n.shareDataTitle())
+            .setMessage(I18n.shareDataMsg())
+            .setPositiveButton(I18n.btnShowMeHow(), new DialogInterface.OnClickListener() {
                 public void onClick(DialogInterface di, int w) { showShareSteps(); } })
-            .setNegativeButton("No thanks", null).show();
+            .setNegativeButton(I18n.btnNoThanks(), null).show();
     }
 
     void showShareSteps() {
-        new AlertDialog.Builder(this).setTitle("Share your data (optional)")
-            .setMessage("1. Drive as usual for a few weeks. The longer the log, the more useful it is.\n"
-                + "2. Insert a USB drive and tap Export below (or Settings \u2192 Tools \u2192 Export to USB). Choose "
-                + "\"For sharing, dates hidden\" if you'd rather not show when you drive.\n"
-                + "3. On a computer or phone, go to github.com/zpoon/gen5w-BatteryWatchdog, open Issues \u2192 "
-                + "New issue \u2192 Share battery data, fill in what you know about your 12V battery, and attach "
-                + "the .zip from the drive.\n\n"
-                + "If your battery fails or is replaced later, a comment on that issue helps a lot.\n\n"
-                + "An export has no location, VIN or account details.")
-            .setPositiveButton("Export", new DialogInterface.OnClickListener() {
+        new AlertDialog.Builder(this).setTitle(I18n.shareStepsTitle())
+            .setMessage(I18n.shareStepsMsg())
+            .setPositiveButton(I18n.btnExport(), new DialogInterface.OnClickListener() {
                 public void onClick(DialogInterface di, int w) { exportToUsb(); } })
-            .setNegativeButton("Close", null).show();
+            .setNegativeButton(I18n.btnClose(), null).show();
     }
 
     static final String SVC_ID = "battery.watchdog/watch";
@@ -877,8 +878,8 @@ public class MainActivity extends Activity {
     static final String SVC_SCRIPT = "/data/nemesis/apps/battery.watchdog/svc/watchdog.sh";
 
     void showDiagnostics() {
-        new AlertDialog.Builder(this).setTitle("Diagnostics").setMessage(buildDiagnostics())
-            .setPositiveButton("Close", null).show();
+        new AlertDialog.Builder(this).setTitle(I18n.diagnostics()).setMessage(buildDiagnostics())
+            .setPositiveButton(I18n.btnClose(), null).show();
     }
 
     /** Diagnostics text, shown in the dialog and saved by the USB export. */
@@ -954,19 +955,19 @@ public class MainActivity extends Activity {
                 + NEM + " service stop " + SVC_ID + " 2>&1; "
                 + NEM + " service start " + SVC_ID + " 2>&1; sleep 3; "
                 + NEM + " service status " + SVC_ID + " 2>&1");
-        toolOut.setText("Restart: " + r.trim().replace("\n", "  |  "));
-        toast("Monitor restarted. Check Diagnostics in 30 seconds.");
+        toolOut.setText((I18n.isAr() ? "إعادة التشغيل: " : "Restart: ") + r.trim().replace("\n", "  |  "));
+        toast(I18n.monitorRestarted());
     }
 
     // Runs the installed monitor script directly as root for a couple of loops
     // (BWD_TEST shortens the timings), bypassing NEMESIS. Real readings are saved.
     void testRun() {
-        if (!verified()) { toast("Not verified on this firmware, so the test run is disabled."); return; }
-        toast("Running the monitor for about 10 seconds\u2026");
+        if (!verified()) { toast(I18n.testRunNotVerified()); return; }
+        toast(I18n.testRunning());
         String out = runRoot("cd " + STATE + " && BWD_TEST=1 BWD_TEST_LOOPS=3 /system/bin/sh " + SVC_SCRIPT
                 + " > " + STATE + "/testrun.log 2>&1; echo \"exit code $?\"; cat " + STATE + "/testrun.log");
-        new AlertDialog.Builder(this).setTitle("Test run").setMessage(out.trim().length() == 0 ? "(no output)" : out.trim())
-            .setPositiveButton("Close", null).show();
+        new AlertDialog.Builder(this).setTitle(I18n.testRunTitle()).setMessage(out.trim().length() == 0 ? I18n.noOutput() : out.trim())
+            .setPositiveButton(I18n.btnClose(), null).show();
         refreshData();
     }
 
@@ -974,28 +975,25 @@ public class MainActivity extends Activity {
     static final String[] USB_ROOTS = { "/storage/usb0", "/storage/usb1", "/storage/usb2",
             "/mnt/media_rw/usb0", "/mnt/media_rw/usb1" };
     static final String[] STATE_FILES = { "log.csv", "log.old.csv", "sessions", "warnings", "status", "txn",
-            "enabled", "warn_pct", "drop_pct", "interval_s", "toast_start", "decode", "scale_x10" };
+            "enabled", "warn_pct", "drop_pct", "interval_s", "toast_start", "decode", "scale_x10", "temp_unit", "lang" };
 
     void exportToUsb() {
-        new AlertDialog.Builder(this).setTitle("Export to USB")
-            .setMessage("Export writes a folder you can open in Excel or Google Sheets, and a zip of the same "
-                + "files, ready to attach to a \"Share battery data\" issue.\n\n"
-                + "\"For sharing, dates hidden\" writes only a zip with the battery log, with every date moved back "
-                + "by the same random number of weeks. Use it if you'd rather not show when you drive.")
-            .setPositiveButton("Export", new DialogInterface.OnClickListener() {
+        new AlertDialog.Builder(this).setTitle(I18n.exportToUsb())
+            .setMessage(I18n.exportDialogMsg())
+            .setPositiveButton(I18n.btnExport(), new DialogInterface.OnClickListener() {
                 public void onClick(DialogInterface di, int w) { runExport(false); } })
-            .setNeutralButton("For sharing, dates hidden", new DialogInterface.OnClickListener() {
+            .setNeutralButton(I18n.btnForSharing(), new DialogInterface.OnClickListener() {
                 public void onClick(DialogInterface di, int w) { runExport(true); } })
-            .setNegativeButton("Cancel", null).show();
+            .setNegativeButton(I18n.btnCancel(), null).show();
     }
 
     void runExport(final boolean hideDates) {
-        toast("Exporting\u2026");
+        toast(I18n.exporting());
         new Thread(new Runnable() { public void run() {
             final String msg = hideDates ? doShareExport() : doExport();
             handler.post(new Runnable() { public void run() {
-                new AlertDialog.Builder(MainActivity.this).setTitle("Export to USB").setMessage(msg)
-                    .setPositiveButton("Close", null).show();
+                new AlertDialog.Builder(MainActivity.this).setTitle(I18n.exportToUsb()).setMessage(msg)
+                    .setPositiveButton(I18n.btnClose(), null).show();
             } });
         } }).start();
     }
@@ -1026,18 +1024,17 @@ public class MainActivity extends Activity {
     /** Export for sharing: only a zip, dates shifted, no file name or entry time that shows the date. */
     String doShareExport() {
         String usb = usbRoot();
-        if (usb == null) return NO_USB;
+        if (usb == null) return I18n.noUsb();
         Map<String, String> raw = readState(ShareZip.SHARE_FILES);
-        if (raw.get("log.csv") == null && raw.get("log.old.csv") == null) return "There are no readings to export yet.";
+        if (raw.get("log.csv") == null && raw.get("log.old.csv") == null) return I18n.noReadingsToExport();
         String info = "app: " + appVersion() + "\nfirmware: " + fw + "\nverification: " + verifyState + "\n";
         String name = "BatteryWatchdog-share-" + ShareZip.randomId() + ".zip";
         String err;
         try { err = writeRootBytes(usb + "/" + name, ShareZip.share(raw, info, ShareZip.randomShift())); }
         catch (Exception e) { err = e.toString(); }
         runRoot("sync");
-        if (err.length() > 0) return "Couldn't write " + name + " to " + usb + ":\n" + err;
-        return "Wrote " + name + " to " + usb + ".\n\nIt has the battery log, drives and warnings, with every date moved back "
-            + "by the same random number of weeks. Attach it to a \"Share battery data\" issue on GitHub. Thank you!";
+        if (err.length() > 0) return I18n.reportSaved(name, usb, err);
+        return I18n.shareExportComplete(usb + "/" + name);
     }
 
     String doExport() {
@@ -1090,6 +1087,7 @@ public class MainActivity extends Activity {
             prevEnd = st + min * 60L; prevEndPct = ep; drives++;
         }
 
+        int warns = 0;
         StringBuilder wr = new StringBuilder();
         for (String line : runRoot("cat " + STATE + "/warnings 2>/dev/null").split("\n")) {
             String l = line.trim();
@@ -1097,8 +1095,9 @@ public class MainActivity extends Activity {
             if (sp <= 0) continue;
             long ts = parseL(l.substring(0, sp), 0);
             wr.append(ts > 0 ? t.format(new Date(ts * 1000)) : l.substring(0, sp)).append("  ").append(l.substring(sp + 1)).append('\n');
+            warns++;
         }
-        if (wr.length() == 0) wr.append("No warnings recorded.\n");
+        if (wr.length() == 0) wr.append(I18n.isAr() ? "لا توجد تنبيهات مسجلة.\n" : "No warnings recorded.\n");
 
         String err = "";
         err += writeToUsb("readings.csv", rd.toString(), dir);
@@ -1119,11 +1118,9 @@ public class MainActivity extends Activity {
         } catch (Exception e) { err += "zip: " + e + "\n"; }
         runRoot("sync");
         String rawList = runRoot("ls " + shq(dir + "/raw") + " 2>&1").trim().replace("\n", " ");
-        if (err.length() > 0) return "Some files couldn't be written to " + dir + ":\n" + err
+        if (err.length() > 0) return (I18n.isAr() ? "تعذر كتابة بعض الملفات إلى " : "Some files couldn't be written to ") + dir + ":\n" + err
             + "\nraw/ on the drive: " + (rawList.length() > 0 ? rawList : "(empty)");
-        return "Exported " + rows + " readings and " + drives + " drives (written via " + lastWriteMethod + ") to\n" + dir
-            + "\n\nreport.txt is the battery report. readings.csv and drives.csv open in Excel or Google Sheets. raw/ has the original files. "
-            + "The .zip beside the folder has the same files, ready to attach to a \"Share battery data\" issue.";
+        return I18n.exportComplete(rows, drives, warns, dir);
     }
 
     String writeToUsb(String name, String content, String dir) {
@@ -1146,7 +1143,7 @@ public class MainActivity extends Activity {
     }
 
     void showReport() {
-        toast("Making the report\u2026");
+        toast(I18n.makingReport());
         new Thread(new Runnable() { public void run() {
             final String text = buildReport();
             handler.post(new Runnable() { public void run() {
@@ -1161,10 +1158,10 @@ public class MainActivity extends Activity {
                 h.addView(t);
                 ScrollView sv = new ScrollView(MainActivity.this);
                 sv.addView(h);
-                new AlertDialog.Builder(MainActivity.this).setTitle("Battery report").setView(sv)
-                    .setPositiveButton("Save to USB", new DialogInterface.OnClickListener() {
+                new AlertDialog.Builder(MainActivity.this).setTitle(I18n.batteryReportTitle()).setView(sv)
+                    .setPositiveButton(I18n.btnSaveToUsb(), new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface di, int w) { saveReport(text); } })
-                    .setNegativeButton("Close", null).show();
+                    .setNegativeButton(I18n.btnClose(), null).show();
             } });
         } }).start();
     }
@@ -1173,17 +1170,16 @@ public class MainActivity extends Activity {
         new Thread(new Runnable() { public void run() {
             String usb = usbRoot();
             final String msg;
-            if (usb == null) msg = NO_USB;
+            if (usb == null) msg = I18n.noUsb();
             else {
                 String name = "BatteryWatchdog-report-" + new SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(new Date()) + ".txt";
                 String err = writeRoot(usb + "/" + name, text.replace("\n", "\r\n"));   // CRLF: opens cleanly in any editor
                 runRoot("sync");
-                msg = err.length() > 0 ? "Couldn't write " + name + " to " + usb + ":\n" + err
-                    : "Wrote " + name + " to " + usb + ".\n\nIt's a plain text file that opens on any computer or phone.";
+                msg = I18n.reportSaved(name, usb, err);
             }
             handler.post(new Runnable() { public void run() {
-                new AlertDialog.Builder(MainActivity.this).setTitle("Battery report").setMessage(msg)
-                    .setPositiveButton("Close", null).show();
+                new AlertDialog.Builder(MainActivity.this).setTitle(I18n.batteryReportTitle()).setMessage(msg)
+                    .setPositiveButton(I18n.btnClose(), null).show();
             } });
         } }).start();
     }
@@ -1194,15 +1190,15 @@ public class MainActivity extends Activity {
         SimpleDateFormat f = new SimpleDateFormat("MMM d, yyyy  h:mm a", Locale.US);
         for (Report.Warning w : ws) b.append(f.format(new Date(w.at * 1000))).append("\n").append(w.text).append("\n\n");
         new AlertDialog.Builder(this)
-            .setTitle(ws.isEmpty() ? "Warning history" : "Warning history (" + ws.size() + ")")
-            .setMessage(ws.isEmpty() ? "No warnings so far." : b.toString().trim())
-            .setPositiveButton("Close", null).show();
+            .setTitle(I18n.warningHistory() + (ws.isEmpty() ? "" : " (" + ws.size() + ")"))
+            .setMessage(ws.isEmpty() ? I18n.noWarningsSoFar() : b.toString().trim())
+            .setPositiveButton(I18n.btnClose(), null).show();
     }
 
     void clearHistory() {
         runRoot("rm -f " + STATE + "/log.csv " + STATE + "/log.old.csv " + STATE + "/sessions "
                 + STATE + "/warnings " + STATE + "/lines");
-        toast("History cleared");
+        toast(I18n.historyCleared());
         refreshData();
     }
 
@@ -1400,6 +1396,7 @@ public class MainActivity extends Activity {
         decode     = clamp(readInt("decode", 1), 0, 2);
         scaleX10   = readInt("scale_x10", 10) == 5 ? 5 : 10;
         interval   = readInt("interval_s", 300);
+        tempUnit   = clamp(readInt("temp_unit", 0), 0, 1);
         lang       = clamp(readInt("lang", 0), 0, 1);
         I18n.currentLang = lang;
     }
@@ -1414,6 +1411,7 @@ public class MainActivity extends Activity {
             + "; echo " + decode + " > " + STATE + "/decode"
             + "; echo " + scaleX10 + " > " + STATE + "/scale_x10"
             + "; echo " + interval + " > " + STATE + "/interval_s"
+            + "; echo " + tempUnit + " > " + STATE + "/temp_unit"
             + "; echo " + lang + " > " + STATE + "/lang";
         String r = runRoot(cmd);
         return r.startsWith("ERR") ? r : "";
@@ -1421,6 +1419,7 @@ public class MainActivity extends Activity {
 
     void refreshButtons() {
         if (langSeg != null) langSeg.select(lang);
+        if (tempSeg != null) tempSeg.select(tempUnit);
         enSeg.select(enabled ? 0 : 1);
         popSeg.select(toastStart ? 1 : 0);
         int i = 0; while (i < INTERVALS.length && INTERVALS[i] != interval) i++;
@@ -1695,6 +1694,9 @@ public class MainActivity extends Activity {
         return (min / 1440) + " d " + ((min % 1440) / 60) + " h";
     }
     static String time(long epoch) {
+        if (I18n.isAr()) {
+            return new SimpleDateFormat("d MMM، h:mm a", new Locale("ar")).format(new Date(epoch * 1000));
+        }
         return new SimpleDateFormat("MMM d, h:mm a", Locale.US).format(new Date(epoch * 1000));
     }
     int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
