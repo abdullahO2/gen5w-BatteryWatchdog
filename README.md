@@ -2,6 +2,12 @@
 
 # Battery Watchdog
 
+> **🇸🇦 النسخة العربية الشاملة (لأي سيارة مطابقة) / Arabic Universal Edition**  
+> نسخة مخصصة لشاشات هيونداي وكيا Gen5W مع تعريب كامل وفحص توافق ذكي تلقائي.  
+> للمزيد من التفاصيل باللغة العربية، راجع قسم [النسخة العربية](#-النسخة-العربية-الشاملة-arabic-universal-edition) بالأسفل.
+
+---
+
 A [NEMESIS](#requirements) package for Hyundai and Kia cars with the
 **Gen5W** head unit. It keeps an eye on the **12V battery** and warns you on
 the car's screen before a weak battery or a charging problem leaves you
@@ -25,6 +31,29 @@ helps just as much.
 > own risk. Battery Watchdog only **reads** values from the car, and it
 > doesn't read anything until it has confirmed it's talking to the right
 > functions on your firmware (see [Safety](#safety)).
+
+## 🇸🇦 النسخة العربية الشاملة (Arabic Universal Edition)
+
+هذه النسخة معدلة ومطورة لتعمل بشكل شامل وسلس على شاشات **Hyundai** و **Kia** ذات نظام **Gen5W** مع واجهة معربة بالكامل:
+
+### أهم المميزات في هذه النسخة:
+1. **تعريب كامل للواجهة**:
+   - ترجمة جميع شاشات التطبيق، والعدادات، وسجل الرحلات، والتنبيهات للغة العربية.
+   - إمكانية التبديل الفوري بين **العربية** و **English** من قائمة الإعدادات (Settings).
+2. **فحص ذكي تلقائي للتوافق قبل التثبيت (Smart Pre-install Check)**:
+   - فحص آلي لوجود خدمة الاتصال الأصلية في السيارة (`tm_hscan_service`).
+   - فحص واكتشاف الدوال المطلوبة لقراءة البطارية (`getBatSoc` وغيرها) ديناميكياً من نظام السيارة.
+   - **أمان كامل**: إذا كانت سيارتك متوافقة، يكتمل التثبيت تلقائياً. وإذا لم تكن متوافقة، يتم إلغاء التثبيت فوراً دون أي تعديل على نظام الشاشة.
+3. **دعم شامل (Universal)**:
+   - لم يعد التطبيق مقيداً برقم فيرموير أو موديل معين؛ بل يعمل تلقائياً مع أي سيارة Gen5W متوافقة.
+   - دعم رسمي مؤكد لسيارات **Hyundai Palisade (LX2)** وإصدارات الشرق الأوسط وكوريا.
+
+### التثبيت السريع عبر فلاشة USB:
+1. حمّل ملف `gen5w-BatteryWatchdog-USB.zip` من صفحة [Releases](../../releases).
+2. فك الضغط وانقل الملفات إلى المسار الرئيسي لفلاشة USB (FAT32 أو exFAT).
+3. ركّب الفلاشة في السيارة وثبّت الحزمة عبر **NEMESIS Package Store**.
+
+---
 
 ## Features
 
