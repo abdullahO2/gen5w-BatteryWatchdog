@@ -2,9 +2,9 @@
 
 # Battery Watchdog
 
-> **🇸🇦 النسخة العربية الشاملة (لأي سيارة مطابقة) / Arabic Universal Edition**  
+> **النسخة العربية الشاملة (لأي سيارة مطابقة) / Arabic Universal Edition**  
 > نسخة مخصصة لشاشات هيونداي وكيا Gen5W مع تعريب كامل وفحص توافق ذكي تلقائي ودعم الدرجة المئوية افتراضياً.  
-> للمزيد من التفاصيل باللغة العربية، راجع قسم [النسخة العربية](#-النسخة-العربية-الشاملة-arabic-universal-edition) بالأسفل.
+> للمزيد من التفاصيل باللغة العربية، راجع قسم [النسخة العربية](#النسخة-العربية-الشاملة-arabic-universal-edition) بالأسفل.
 
 ---
 
@@ -32,7 +32,7 @@ helps just as much.
 > doesn't read anything until it has confirmed it's talking to the right
 > functions on your firmware (see [Safety](#safety)).
 
-## 🇸🇦 النسخة العربية الشاملة (Arabic Universal Edition)
+## النسخة العربية الشاملة (Arabic Universal Edition)
 
 هذه النسخة معدلة ومطورة لتعمل بشكل شامل وسلس على شاشات **Hyundai** و **Kia** ذات نظام **Gen5W** مع واجهة معربة بالكامل:
 
