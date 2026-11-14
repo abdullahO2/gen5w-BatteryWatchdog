@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
     boolean enabled = true, toastStart = false;
     int warnPct = 60, dropPct = 15, decode = 1, scaleX10 = 10, interval = 300;
     int tempUnit = 0; // 0 = Celsius (default), 1 = Fahrenheit
-    int lang = 0; // 0 = English, 1 = Arabic
+    int lang = 1; // 0 = English, 1 = Arabic (default)
 
     // home
     View home;
@@ -463,7 +463,7 @@ public class MainActivity extends Activity {
 
         // banner: the latest warning, else a decode problem, else nothing
         boolean noRead = "no_reading".equals(state);
-        if (warn.length() > 0) setBanner("⚠  " + warn);
+        if (warn.length() > 0) setBanner("⚠  " + translateWarning(warn));
         else if (noRead) setBanner(I18n.isAr() ? "تعذر فك تشفير قيمة 12V. تحقق من الإعدادات ← الحساس." : "The 12V value couldn't be decoded. Check Settings → Sensor.");
         else setBanner(null);
 
@@ -1187,8 +1187,10 @@ public class MainActivity extends Activity {
     void showWarnings() {
         List<Report.Warning> ws = Report.warnings(runRoot("cat " + STATE + "/warnings 2>/dev/null"));
         StringBuilder b = new StringBuilder();
-        SimpleDateFormat f = new SimpleDateFormat("MMM d, yyyy  h:mm a", Locale.US);
-        for (Report.Warning w : ws) b.append(f.format(new Date(w.at * 1000))).append("\n").append(w.text).append("\n\n");
+        SimpleDateFormat f = I18n.isAr()
+            ? new SimpleDateFormat("d MMM yyyy، h:mm a", new Locale("ar"))
+            : new SimpleDateFormat("MMM d, yyyy  h:mm a", Locale.US);
+        for (Report.Warning w : ws) b.append(f.format(new Date(w.at * 1000))).append("\n").append(translateWarning(w.text)).append("\n\n");
         new AlertDialog.Builder(this)
             .setTitle(I18n.warningHistory() + (ws.isEmpty() ? "" : " (" + ws.size() + ")"))
             .setMessage(ws.isEmpty() ? I18n.noWarningsSoFar() : b.toString().trim())
@@ -1397,7 +1399,7 @@ public class MainActivity extends Activity {
         scaleX10   = readInt("scale_x10", 10) == 5 ? 5 : 10;
         interval   = readInt("interval_s", 300);
         tempUnit   = clamp(readInt("temp_unit", 0), 0, 1);
-        lang       = clamp(readInt("lang", 0), 0, 1);
+        lang       = clamp(readInt("lang", 1), 0, 1);
         I18n.currentLang = lang;
     }
 
@@ -1499,7 +1501,7 @@ public class MainActivity extends Activity {
             v = column();
             v.setPadding(dp(14), dp(10), dp(14), dp(10));
             captionView = new TextView(MainActivity.this);
-            captionView.setText(caption); captionView.setTextColor(pal.muted); captionView.setTextSize(14);
+            captionView.setText(caption); captionView.setTextColor(pal.muted); captionView.setTextSize(I18n.isAr() ? 13 : 14);
             captionView.setSingleLine(true); captionView.setEllipsize(android.text.TextUtils.TruncateAt.END);
             v.addView(captionView);
             value = new TextView(MainActivity.this);
@@ -1507,13 +1509,16 @@ public class MainActivity extends Activity {
             value.setPadding(0, dp(4), 0, dp(2));
             v.addView(value);
             sub = new TextView(MainActivity.this);
-            sub.setTextColor(pal.muted); sub.setTextSize(14);
+            sub.setTextColor(pal.muted); sub.setTextSize(I18n.isAr() ? 13 : 14);
             sub.setSingleLine(true); sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
             v.addView(sub);
             set("--", "", pal.text, false);
         }
         void setCaption(String text) {
-            if (captionView != null) captionView.setText(text);
+            if (captionView != null) {
+                captionView.setText(text);
+                captionView.setTextSize(I18n.isAr() ? 13 : 14);
+            }
         }
         void set(String val, String line, int color, boolean flag) {
             value.setText(val); value.setTextColor(color);
@@ -1698,6 +1703,18 @@ public class MainActivity extends Activity {
             return new SimpleDateFormat("d MMM، h:mm a", new Locale("ar")).format(new Date(epoch * 1000));
         }
         return new SimpleDateFormat("MMM d, h:mm a", Locale.US).format(new Date(epoch * 1000));
+    }
+    static String translateWarning(String w) {
+        if (!I18n.isAr() || w == null) return w;
+        String s = w;
+        s = s.replaceAll("12V battery low:\\s*", "شحن بطارية 12V منخفض: ");
+        s = s.replaceAll("12V dropped (\\S+) pts while parked:\\s*", "انخفض شحن بطارية 12V بمقدار $1 نقطة أثناء التوقف: ");
+        s = s.replaceAll("12V did not recover on last drive:\\s*", "لم يستعد شحن بطارية 12V في الرحلة الأخيرة: ");
+        s = s.replaceAll("over (\\d+) min", "خلال $1 دقيقة");
+        s = s.replaceAll(", outside (\\d+)F", "، الحرارة الخارجية $1°F");
+        s = s.replaceAll(", outside (\\d+)C", "، الحرارة الخارجية $1°م");
+        s = s.replaceAll(", outside (\\d+)°C", "، الحرارة الخارجية $1°م");
+        return s;
     }
     int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
     int clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }

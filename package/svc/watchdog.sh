@@ -283,7 +283,7 @@ load_cfg() {
     SCALE=$(cfg scale_x10 10)     # % per raw unit, x10: 10 = 1 %, 5 = 0.5 %
     TOAST_START=$(cfg toast_start 0)
     TEMP_UNIT=$(cfg temp_unit 0)  # 0 Celsius (default), 1 Fahrenheit
-    LANG=$(cfg lang 0)            # 0 English, 1 Arabic
+    LANG=$(cfg lang 1)            # 0 English, 1 Arabic (default)
     MAX_LINES=$(cfg max_lines 4000)
     POLL=$(cfg poll_s 15)
     MIN_OFF=$(cfg min_off_s 600)  # screen off at least this long = parked = a new drive

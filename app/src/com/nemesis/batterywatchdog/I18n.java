@@ -71,10 +71,10 @@ public class I18n {
     public static String unverifiedOverride() { return t("Unverified firmware: use built-in numbers…", "فيرموير غير معتمد: استخدام الأرقام المدمجة…"); }
 
     // Home Tiles
-    public static String tileParked() { return t("Parked before this drive", "استهلاك التوقف قبل هذه الرحلة"); }
-    public static String tileDrain() { return t("Parked drain, last 7 days", "استهلاك البطارية أثناء التوقف (آخر 7 أيام)"); }
-    public static String tileLowest() { return t("Lowest start, last 7 days", "أدنى مستوى شحن عند التشغيل (آخر 7 أيام)"); }
-    public static String tileHealth() { return t("HV battery health", "صحة البطارية الرئيسية (HV SOH)"); }
+    public static String tileParked() { return t("Parked before this drive", "استهلاك التوقف قبل الرحلة"); }
+    public static String tileDrain() { return t("Parked drain, last 7 days", "استهلاك التوقف (آخر 7 أيام)"); }
+    public static String tileLowest() { return t("Lowest start, last 7 days", "أدنى تشغيل (آخر 7 أيام)"); }
+    public static String tileHealth() { return t("HV battery health", "صحة البطارية الرئيسية"); }
 
     // Status & States
     public static String statusGood() { return t("Good", "ممتازة"); }
