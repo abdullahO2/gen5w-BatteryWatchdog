@@ -4,3 +4,4 @@ app/*.jks
 package/app/*.apk
 dist/
 __pycache__/
+*.class

@@ -2,9 +2,18 @@ package com.nemesis.batterywatchdog;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * Reads AIDL transaction codes by NAME from a DEX or ODEX file, so the monitor
@@ -20,6 +29,29 @@ import java.util.Map;
 public final class TxnResolver {
 
     public static final String STUB = "Lcom/hkmc/telematics/hscan/tm_interface/ITM_HSCANService$Stub;";
+    public static final byte[] NEEDLE = "tm_interface/ITM_HSCANService$Stub;".getBytes();
+
+    public static final String[] SEARCH_DIRS = {
+        "/system/framework", "/system/app", "/system/priv-app",
+        "/vendor/framework", "/vendor/app", "/system/vendor/app", "/system/vendor/framework"
+    };
+
+    public static final String[][] EXTRAS = {
+        { "sns_state",   "get12VBatterySensorState" },
+        { "sns_invalid", "get12VBatterySensorInvalid" },
+        { "sns_error",   "get12VBatterySensorError" },
+        { "aux_opt",     "getAuxOptionBattChgStatus" },
+        { "chg_status",  "getBattChgStatus" },
+    };
+
+    public static final class Result {
+        public final String source;
+        public final Map<String, Integer> txns;
+        public Result(String source, Map<String, Integer> txns) {
+            this.source = source;
+            this.txns = txns;
+        }
+    }
 
     private final byte[] raw;
     private final int base;                      // dex start inside raw (ODEX wrapper offset, else 0)
@@ -98,11 +130,11 @@ public final class TxnResolver {
 
     /** Transaction codes from every classes*.dex inside a .jar/.apk (for builds that aren't odexed). */
     public static Map<String, Integer> transactionsInZip(File f, String classDesc, byte[] needle) throws IOException {
-        java.util.zip.ZipFile z = new java.util.zip.ZipFile(f);
+        ZipFile z = new ZipFile(f);
         try {
-            java.util.Enumeration<? extends java.util.zip.ZipEntry> e = z.entries();
+            Enumeration<? extends ZipEntry> e = z.entries();
             while (e.hasMoreElements()) {
-                java.util.zip.ZipEntry en = e.nextElement();
+                ZipEntry en = e.nextElement();
                 if (!en.getName().matches("classes\\d*\\.dex")) continue;
                 java.io.InputStream in = z.getInputStream(en);
                 java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
@@ -120,6 +152,52 @@ public final class TxnResolver {
             return new HashMap<String, Integer>();
         } finally {
             z.close();
+        }
+    }
+
+    /** Scan system directories for ITM_HSCANService$Stub and return the first match with getBatSoc. */
+    public static Result scanSystem(String[] searchDirs, StringBuilder lg) {
+        if (searchDirs == null) searchDirs = SEARCH_DIRS;
+        if (lg == null) lg = new StringBuilder();
+        List<File> plain = new ArrayList<File>(), zips = new ArrayList<File>();
+        for (String dname : searchDirs) {
+            File d = new File(dname);
+            if (d.exists() && d.isDirectory()) collect(d, plain, zips, 2);
+        }
+        lg.append("searched ").append(plain.size()).append(" odex/dex and ").append(zips.size()).append(" jar/apk files\n");
+        for (File f : plain) {
+            try {
+                if (!fileContains(f, NEEDLE)) continue;
+                lg.append("found Stub in ").append(f).append("\n");
+                Map<String, Integer> m = transactions(f, STUB);
+                lg.append("  ").append(m.size()).append(" transactions; getBatSoc=").append(m.get("getBatSoc")).append("\n");
+                if (m.containsKey("getBatSoc")) return new Result(f.getPath(), m);
+            } catch (Throwable t) {
+                lg.append("  ").append(f).append(": ").append(t).append("\n");
+            }
+        }
+        for (File f : zips) {
+            try {
+                Map<String, Integer> m = transactionsInZip(f, STUB, NEEDLE);
+                if (m.isEmpty()) continue;
+                lg.append("found Stub in ").append(f).append(": ").append(m.size()).append(" transactions; getBatSoc=").append(m.get("getBatSoc")).append("\n");
+                if (m.containsKey("getBatSoc")) return new Result(f.getPath(), m);
+            } catch (Throwable t) {
+                lg.append("  ").append(f).append(": ").append(t).append("\n");
+            }
+        }
+        lg.append("not found\n");
+        return null;
+    }
+
+    public static void collect(File dir, List<File> plain, List<File> zips, int depth) {
+        File[] l = dir.listFiles();
+        if (l == null) return;
+        for (File f : l) {
+            String n = f.getName().toLowerCase(Locale.US);
+            if (f.isDirectory()) { if (depth > 1) collect(f, plain, zips, depth - 1); }
+            else if (n.endsWith(".odex") || n.endsWith(".dex")) plain.add(f);
+            else if (n.endsWith(".jar") || n.endsWith(".apk")) zips.add(f);
         }
     }
 
@@ -187,5 +265,89 @@ public final class TxnResolver {
 
     private static int u4(byte[] b, int o) {
         return (b[o] & 0xff) | (b[o + 1] & 0xff) << 8 | (b[o + 2] & 0xff) << 16 | (b[o + 3] & 0xff) << 24;
+    }
+
+    /**
+     * Standalone CLI entrypoint. Can be run via dalvikvm or desktop Java:
+     * Usage: TxnResolver [--write-state] [path_to_scan]
+     */
+    public static void main(String[] args) {
+        boolean writeState = false;
+        String customPath = null;
+        for (String a : args) {
+            if ("--write-state".equals(a)) writeState = true;
+            else if (!a.startsWith("-")) customPath = a;
+        }
+
+        Result r = null;
+        StringBuilder lg = new StringBuilder();
+        if (customPath != null) {
+            File cf = new File(customPath);
+            if (cf.isFile()) {
+                try {
+                    Map<String, Integer> m;
+                    String low = cf.getName().toLowerCase(Locale.US);
+                    if (low.endsWith(".jar") || low.endsWith(".apk")) {
+                        m = transactionsInZip(cf, STUB, NEEDLE);
+                    } else {
+                        m = transactions(cf, STUB);
+                    }
+                    if (m != null && m.containsKey("getBatSoc")) {
+                        r = new Result(cf.getPath(), m);
+                    }
+                } catch (Exception e) {
+                    lg.append("Error parsing ").append(cf).append(": ").append(e).append("\n");
+                }
+            } else if (cf.isDirectory()) {
+                r = scanSystem(new String[] { customPath }, lg);
+            }
+        } else {
+            r = scanSystem(SEARCH_DIRS, lg);
+        }
+
+        if (r == null || !r.txns.containsKey("getBatSoc")) {
+            System.err.println("TxnResolver: FAILED - getBatSoc not found.");
+            System.err.print(lg.toString());
+            System.exit(1);
+        }
+
+        Integer soc = r.txns.get("getBatSoc");
+        Integer hv = r.txns.get("remainBatteryPercentage");
+        Integer soh = r.txns.get("getXEV_Bms_GDS_SOH");
+        System.out.println("TxnResolver: OK - found in " + r.source);
+        System.out.println("  soc=" + soc);
+        if (hv != null) System.out.println("  hv=" + hv);
+        if (soh != null) System.out.println("  soh=" + soh);
+
+        if (writeState) {
+            try {
+                String fw = "";
+                try {
+                    Class<?> sp = Class.forName("android.os.SystemProperties");
+                    Method m = sp.getMethod("get", String.class);
+                    fw = (String) m.invoke(null, "ro.build.version.incremental");
+                } catch (Throwable ignored) {}
+
+                File stateDir = new File("/data/nemesis/state/battery.watchdog");
+                stateDir.mkdirs();
+                File txnFile = new File(stateDir, "txn");
+                PrintWriter pw = new PrintWriter(new FileWriter(txnFile));
+                pw.println("fw=" + fw);
+                pw.println("soc=" + soc);
+                pw.println("hv=" + (hv != null ? hv : ""));
+                pw.println("soh=" + (soh != null ? soh : ""));
+                for (String[] x : EXTRAS) {
+                    Integer val = r.txns.get(x[1]);
+                    pw.println(x[0] + "=" + (val != null ? val : ""));
+                }
+                pw.println("ext=1");
+                pw.println("source=" + r.source);
+                pw.close();
+                System.out.println("TxnResolver: wrote " + txnFile.getPath());
+            } catch (Exception e) {
+                System.err.println("TxnResolver: warning - could not write state: " + e.getMessage());
+            }
+        }
+        System.exit(0);
     }
 }

@@ -409,6 +409,30 @@ verify() {
             VERIFIED=1; VERIFY_WHY=known_firmware; return
         done < "$KNOWN_FILE"
     fi
+    # If still unverified, attempt runtime dynamic resolution via TxnResolver
+    if [ -x /system/bin/dalvikvm ] && [ -f "$PKG_DIR/app/batterywatchdog.apk" ]; then
+        mkdir -p /data/local/tmp/dalvik-cache 2>/dev/null
+        chmod 777 /data/local/tmp/dalvik-cache 2>/dev/null
+        ANDROID_DATA=/data/local/tmp /system/bin/dalvikvm -cp "$PKG_DIR/app/batterywatchdog.apk" com.nemesis.batterywatchdog.TxnResolver --write-state >/dev/null 2>&1
+        if [ -r "$STATE/txn" ]; then
+            _fw=""; _soc=""; _hv=""; _soh=""; _ss=""; _si=""; _se=""; _ax=""; _cs=""; _src=""
+            while IFS='=' read -r _k _v; do
+                case "$_k" in fw) _fw=$_v;; soc) _soc=$_v;; hv) _hv=$_v;; soh) _soh=$_v;;
+                    sns_state) _ss=$_v;; sns_invalid) _si=$_v;; sns_error) _se=$_v;;
+                    aux_opt) _ax=$_v;; chg_status) _cs=$_v;; source) _src=$_v;; esac
+            done < "$STATE/txn"
+            if [ -n "$FW" ] && [ "$_fw" = "$FW" ] && isnum "$_soc"; then
+                TX_SOC=$_soc
+                isnum "$_hv" && TX_HVSOC=$_hv
+                isnum "$_soh" && TX_SOH=$_soh
+                if [ "$_src" != manual-override ]; then
+                    isnum "$_ss" && TX_SNS_STATE=$_ss; isnum "$_si" && TX_SNS_INVALID=$_si
+                    isnum "$_se" && TX_SNS_ERROR=$_se; isnum "$_ax" && TX_AUX=$_ax; isnum "$_cs" && TX_CHG=$_cs
+                fi
+                VERIFIED=1; VERIFY_WHY=resolved_by_name; return
+            fi
+        fi
+    fi
     VERIFY_WHY=unverified_firmware
 }
 
