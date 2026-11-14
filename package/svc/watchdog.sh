@@ -456,6 +456,12 @@ verify() {
             isnum "$_hv" && TX_HVSOC=$_hv
             isnum "$_soh" && TX_SOH=$_soh
             isnum "$_tc" && TX_TEMP_C=$_tc
+            if [ -z "$TX_TEMP_C" ] && [ -r "$KNOWN_FILE" ]; then
+                while read -r _kf _ks _kh _ko _ktc _krest; do
+                    case "$_kf" in ''|'#'*) continue;; esac
+                    if [ "$_kf" = "$FW" ] && isnum "$_ktc"; then TX_TEMP_C=$_ktc; break; fi
+                done < "$KNOWN_FILE"
+            fi
             # the extra getters only ever come from a lookup by name, never an override
             if [ "$_src" != manual-override ]; then
                 isnum "$_ss" && TX_SNS_STATE=$_ss; isnum "$_si" && TX_SNS_INVALID=$_si
@@ -473,6 +479,12 @@ verify() {
             isnum "$_h" && TX_HVSOC=$_h
             isnum "$_o" && TX_SOH=$_o
             isnum "$_tc" && TX_TEMP_C=$_tc
+            if [ -z "$TX_TEMP_C" ] && [ -r "$KNOWN_FILE" ]; then
+                while read -r _kf _ks _kh _ko _ktc _krest; do
+                    case "$_kf" in ''|'#'*) continue;; esac
+                    if [ "$_kf" = "$FW" ] && isnum "$_ktc"; then TX_TEMP_C=$_ktc; break; fi
+                done < "$KNOWN_FILE"
+            fi
             VERIFIED=1; VERIFY_WHY=known_firmware; return
         done < "$KNOWN_FILE"
     fi
@@ -493,6 +505,12 @@ verify() {
                 isnum "$_hv" && TX_HVSOC=$_hv
                 isnum "$_soh" && TX_SOH=$_soh
                 isnum "$_tc" && TX_TEMP_C=$_tc
+            if [ -z "$TX_TEMP_C" ] && [ -r "$KNOWN_FILE" ]; then
+                while read -r _kf _ks _kh _ko _ktc _krest; do
+                    case "$_kf" in ''|'#'*) continue;; esac
+                    if [ "$_kf" = "$FW" ] && isnum "$_ktc"; then TX_TEMP_C=$_ktc; break; fi
+                done < "$KNOWN_FILE"
+            fi
                 if [ "$_src" != manual-override ]; then
                     isnum "$_ss" && TX_SNS_STATE=$_ss; isnum "$_si" && TX_SNS_INVALID=$_si
                     isnum "$_se" && TX_SNS_ERROR=$_se; isnum "$_ax" && TX_AUX=$_ax; isnum "$_cs" && TX_CHG=$_cs

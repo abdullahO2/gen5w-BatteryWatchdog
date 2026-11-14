@@ -707,6 +707,16 @@ public class MainActivity extends Activity {
             if ("manual-override".equals(verifySource)) return "override";
             for (String[] x : EXTRAS) { int n = parse(kv(saved, x[0]), -1); if (n > 0) txExtra.put(x[0], n); }
             if (txTempC <= 0 && txExtra.containsKey("temp_c_tx")) txTempC = txExtra.get("temp_c_tx");
+            if (txTempC <= 0) {
+                for (String line : runRoot("cat " + KNOWN_FILE + " 2>/dev/null").split("\n")) {
+                    String[] f = line.trim().split("\\s+");
+                    if (f.length > 4 && f[0].equals(fw)) {
+                        int tc = parse(f[4], -1);
+                        if (tc > 0) { txTempC = tc; txExtra.put("temp_c_tx", tc); }
+                        break;
+                    }
+                }
+            }
             // saved by a version that didn't look up the extra getters: look them up once
             if (kv(saved, "ext").length() == 0 && verifySource.startsWith("/")) {
                 int soc = txSoc, hv = txHv, soh = txSoh;
