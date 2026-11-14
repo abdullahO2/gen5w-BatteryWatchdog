@@ -136,16 +136,49 @@ decode() {   # RAW -> tenths of a percent, or -1
 # ---- outside temperature (context only; never used for decisions) ------------
 # Sets TEMP_C (whole deg C) and TEMP_SRC, or leaves TEMP_C empty. TEMP_LINE keeps
 # the climate-dump line it looked at, for Diagnostics. Sources, in order:
-#   1. telematics ECO JSON "outTemperature" in logcat (deg C), as coldstart-heat
-#   2. UI log "setOutsideTempUIAdvanced::temp = N" (deg F), coldstart-heat's fallback
-#   3. dumpsys of the climate service: OutTempC / OutTempF raw CAN values,
-#      decoded as below. Available right away, unlike 1 and 2.
+#   1. authentic HSCAN service getter (if available on this firmware)
+#   2. telematics ECO JSON "outTemperature" in logcat (deg C), as coldstart-heat
+#   3. UI log "setOutsideTempUIAdvanced::temp = N" (deg F), coldstart-heat's fallback
+#   4. dumpsys of the climate service: OutTempC / OutTempF raw CAN values,
+#      decoded as below. Available right away, unlike 2 and 3.
 TEMP_SRC=""; TEMP_LINE=""
 trim() { _t=$1; while :; do case "$_t" in ' '*) _t=${_t# };; *' ') _t=${_t% };; *) break;; esac; done; echo "$_t"; }
 # Believable outdoor range. -40 is left out: it's the raw zero of the car's
 # temperature signals (-40 C = -40 F), reported before climate control has a real
 # value, e.g. just after the car wakes.
 in_range_c() { [ "$1" -gt -40 ] 2>/dev/null && [ "$1" -le 55 ]; }
+
+# IEEE-754 32-bit float hex string (e.g. 41680000 = 14.5 C) -> whole deg C integer
+float_temp_c() {
+    _hex=$1
+    [ "${#_hex}" -eq 8 ] || return 1
+    _first=${_hex%"${_hex#?}"}
+    _rest=${_hex#?}
+    _sign=1
+    case "$_first" in
+        [89a-fA-F])
+            _sign=-1
+            case "$_first" in
+                8) _first=0;; 9) _first=1;; [aA]) _first=2;; [bB]) _first=3;;
+                [cC]) _first=4;; [dD]) _first=5;; [eE]) _first=6;; [fF]) _first=7;;
+            esac
+            ;;
+    esac
+    _v10=$(float10 "${_first}${_rest}")
+    [ -z "$_v10" ] || [ "$_v10" -lt 0 ] && return 1
+    _c=$(( (_v10 + 5) / 10 ))
+    [ "$_sign" -lt 0 ] && _c=$(( -_c ))
+    echo "$_c"
+}
+
+temp_from_service() {
+    [ -n "$TX_TEMP_C" ] || return 1
+    call_word "$TX_TEMP_C" || return 1
+    _c=$(float_temp_c "$RAW")
+    [ -n "$_c" ] && in_range_c "$_c" || return 1
+    TEMP_C=$_c; TEMP_SRC=hscan_service
+    return 0
+}
 
 # The climate dump shows the raw CAN values in hex, e.g. on a 2023 Ioniq 5:
 #     OutTempC : 0xff      (0xff = not available)
@@ -207,9 +240,8 @@ temp_from_logcat() {
 TEMP_T=0
 read_temp() {
     TEMP_LINE=""
-    # the logs match the dash exactly but only appear a few minutes into a drive;
-    # the climate dump is there from the start, so it fills that gap
-    if temp_from_logcat || temp_from_datc; then TEMP_T=$(now); return; fi
+    # the service getter is authentic from the CAN bus; logcat matches dash; climate dump is fallback
+    if temp_from_service || temp_from_logcat || temp_from_datc; then TEMP_T=$(now); return; fi
     if [ -n "$TEMP_C" ] && [ $(( $(now) - TEMP_T )) -le 1800 ]; then return; fi
     TEMP_C=""; TEMP_SRC=""
 }
@@ -407,22 +439,23 @@ VERIFIED=0; VERIFY_WHY=""
 isnum() { case "$1" in ''|*[!0-9]*) return 1;; esac; [ "$1" -gt 0 ] && [ "$1" -lt 1000 ]; }
 
 verify() {
-    VERIFIED=0; TX_SOC=""; TX_SOH=""; TX_HVSOC=""
+    VERIFIED=0; TX_SOC=""; TX_SOH=""; TX_HVSOC=""; TX_TEMP_C=""
     TX_SNS_STATE=""; TX_SNS_INVALID=""; TX_SNS_ERROR=""; TX_AUX=""; TX_CHG=""
     if ! service list 2>/dev/null | grep "$SVC" | grep -q "$HSCAN_IFACE"; then
         VERIFY_WHY=interface_mismatch; return
     fi
     if [ -r "$STATE/txn" ]; then
-        _fw=""; _soc=""; _hv=""; _soh=""; _ss=""; _si=""; _se=""; _ax=""; _cs=""; _src=""
+        _fw=""; _soc=""; _hv=""; _soh=""; _ss=""; _si=""; _se=""; _ax=""; _cs=""; _tc=""; _src=""
         while IFS='=' read -r _k _v; do
             case "$_k" in fw) _fw=$_v;; soc) _soc=$_v;; hv) _hv=$_v;; soh) _soh=$_v;;
                 sns_state) _ss=$_v;; sns_invalid) _si=$_v;; sns_error) _se=$_v;;
-                aux_opt) _ax=$_v;; chg_status) _cs=$_v;; source) _src=$_v;; esac
+                aux_opt) _ax=$_v;; chg_status) _cs=$_v;; temp_c_tx) _tc=$_v;; source) _src=$_v;; esac
         done < "$STATE/txn"
         if [ -n "$FW" ] && [ "$_fw" = "$FW" ] && isnum "$_soc"; then
             TX_SOC=$_soc
             isnum "$_hv" && TX_HVSOC=$_hv
             isnum "$_soh" && TX_SOH=$_soh
+            isnum "$_tc" && TX_TEMP_C=$_tc
             # the extra getters only ever come from a lookup by name, never an override
             if [ "$_src" != manual-override ]; then
                 isnum "$_ss" && TX_SNS_STATE=$_ss; isnum "$_si" && TX_SNS_INVALID=$_si
@@ -432,13 +465,14 @@ verify() {
         fi
     fi
     if [ -n "$FW" ] && [ -r "$KNOWN_FILE" ]; then
-        while read -r _f _s _h _o _rest; do
+        while read -r _f _s _h _o _tc _rest; do
             case "$_f" in ''|'#'*) continue;; esac
             [ "$_f" = "$FW" ] || continue
             isnum "$_s" || continue
             TX_SOC=$_s
             isnum "$_h" && TX_HVSOC=$_h
             isnum "$_o" && TX_SOH=$_o
+            isnum "$_tc" && TX_TEMP_C=$_tc
             VERIFIED=1; VERIFY_WHY=known_firmware; return
         done < "$KNOWN_FILE"
     fi
@@ -448,16 +482,17 @@ verify() {
         chmod 777 /data/local/tmp/dalvik-cache 2>/dev/null
         ANDROID_DATA=/data/local/tmp /system/bin/dalvikvm -cp "$PKG_DIR/app/batterywatchdog.apk" com.nemesis.batterywatchdog.TxnResolver --write-state >/dev/null 2>&1
         if [ -r "$STATE/txn" ]; then
-            _fw=""; _soc=""; _hv=""; _soh=""; _ss=""; _si=""; _se=""; _ax=""; _cs=""; _src=""
+            _fw=""; _soc=""; _hv=""; _soh=""; _ss=""; _si=""; _se=""; _ax=""; _cs=""; _tc=""; _src=""
             while IFS='=' read -r _k _v; do
                 case "$_k" in fw) _fw=$_v;; soc) _soc=$_v;; hv) _hv=$_v;; soh) _soh=$_v;;
                     sns_state) _ss=$_v;; sns_invalid) _si=$_v;; sns_error) _se=$_v;;
-                    aux_opt) _ax=$_v;; chg_status) _cs=$_v;; source) _src=$_v;; esac
+                    aux_opt) _ax=$_v;; chg_status) _cs=$_v;; temp_c_tx) _tc=$_v;; source) _src=$_v;; esac
             done < "$STATE/txn"
             if [ -n "$FW" ] && [ "$_fw" = "$FW" ] && isnum "$_soc"; then
                 TX_SOC=$_soc
                 isnum "$_hv" && TX_HVSOC=$_hv
                 isnum "$_soh" && TX_SOH=$_soh
+                isnum "$_tc" && TX_TEMP_C=$_tc
                 if [ "$_src" != manual-override ]; then
                     isnum "$_ss" && TX_SNS_STATE=$_ss; isnum "$_si" && TX_SNS_INVALID=$_si
                     isnum "$_se" && TX_SNS_ERROR=$_se; isnum "$_ax" && TX_AUX=$_ax; isnum "$_cs" && TX_CHG=$_cs

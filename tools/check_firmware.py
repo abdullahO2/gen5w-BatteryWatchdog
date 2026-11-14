@@ -22,7 +22,8 @@ STUB = "Lcom/hkmc/telematics/hscan/tm_interface/ITM_HSCANService$Stub;"
 IFACE = "com.hkmc.telematics.hscan.tm_interface.ITM_HSCANService"
 WANT = [("getBatSoc", "12V state of charge"),
         ("remainBatteryPercentage", "main battery charge"),
-        ("getXEV_Bms_GDS_SOH", "HV battery health")]
+        ("getXEV_Bms_GDS_SOH", "HV battery health"),
+        ("getTemperatureC", "outside temperature")]
 
 
 def u4(d, o):

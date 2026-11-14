@@ -37,11 +37,12 @@ public final class TxnResolver {
     };
 
     public static final String[][] EXTRAS = {
-        { "sns_state",   "get12VBatterySensorState" },
-        { "sns_invalid", "get12VBatterySensorInvalid" },
-        { "sns_error",   "get12VBatterySensorError" },
-        { "aux_opt",     "getAuxOptionBattChgStatus" },
-        { "chg_status",  "getBattChgStatus" },
+        { "sns_state",   "getBATSNSRState", "get12VBatterySensorState" },
+        { "sns_invalid", "getBATSNSRInvalid", "get12VBatterySensorInvalid" },
+        { "sns_error",   "getBATSNSRError", "get12VBatterySensorError" },
+        { "aux_opt",     "get_BAT_AuxBattOpt", "getAuxOptionBattChgStatus" },
+        { "chg_status",  "getChargingStatus", "getBattChgStatus" },
+        { "temp_c_tx",   "getTemperatureC", "getTemperatureC" },
     };
 
     public static final class Result {
@@ -314,10 +315,12 @@ public final class TxnResolver {
         Integer soc = r.txns.get("getBatSoc");
         Integer hv = r.txns.get("remainBatteryPercentage");
         Integer soh = r.txns.get("getXEV_Bms_GDS_SOH");
+        Integer tc = r.txns.get("getTemperatureC");
         System.out.println("TxnResolver: OK - found in " + r.source);
         System.out.println("  soc=" + soc);
         if (hv != null) System.out.println("  hv=" + hv);
         if (soh != null) System.out.println("  soh=" + soh);
+        if (tc != null) System.out.println("  temp_c=" + tc);
 
         if (writeState) {
             try {
@@ -338,6 +341,7 @@ public final class TxnResolver {
                 pw.println("soh=" + (soh != null ? soh : ""));
                 for (String[] x : EXTRAS) {
                     Integer val = r.txns.get(x[1]);
+                    if (val == null && x.length > 2) val = r.txns.get(x[2]);
                     pw.println(x[0] + "=" + (val != null ? val : ""));
                 }
                 pw.println("ext=1");

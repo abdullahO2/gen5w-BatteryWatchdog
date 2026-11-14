@@ -449,6 +449,10 @@ public class MainActivity extends Activity {
         // context: main battery charge and outside temperature
         int hv = parse(kv(status, "hv10"), -1);
         int tc = parse(kv(status, "temp_c"), Integer.MIN_VALUE);
+        if ((tc == Integer.MIN_VALUE || "climate".equals(kv(status, "temp_src"))) && txTempC > 0) {
+            Float live = readTempFromService();
+            if (live != null) tc = Math.round(live);
+        }
         StringBuilder cx = new StringBuilder();
         if (hv >= 0) cx.append(I18n.mainBattery()).append(" ").append(fmt10(hv)).append("%");
         if (tc != Integer.MIN_VALUE) {
@@ -641,6 +645,23 @@ public class MainActivity extends Activity {
         rawLabel.setText(shown);
     }
 
+    Float readTempFromService() {
+        if (txTempC <= 0) return null;
+        String r = runRoot("service call tm_hscan_service " + txTempC).trim();
+        int i = r.indexOf("Parcel(");
+        if (i < 0) return null;
+        String body = r.substring(i + 7);
+        int end = body.indexOf(')');
+        if (end >= 0) body = body.substring(0, end);
+        String[] w = body.trim().split("\\s+");
+        if (w.length < 2 || !"00000000".equals(w[0])) return null;
+        try {
+            float f = Float.intBitsToFloat((int) Long.parseLong(w[1], 16));
+            if (f > -40f && f <= 60f) return f;
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     // ---- firmware verification ------------------------------------------------
     // Transaction numbers can shift between firmware builds, so they're looked
     // up BY NAME in this firmware's own ITM_HSCANService definition and saved
@@ -649,7 +670,7 @@ public class MainActivity extends Activity {
     static final String IFACE = "com.hkmc.telematics.hscan.tm_interface.ITM_HSCANService";
     static final String KNOWN_FILE = "/data/nemesis/apps/battery.watchdog/known_firmware.txt";
     String fw = "", verifyState = "checking", verifySource = "";
-    int txSoc = -1, txHv = -1, txSoh = -1;
+    int txSoc = -1, txHv = -1, txSoh = -1, txTempC = -1;
     /**
      * Read-only getters logged alongside the 12V reading, raw, until their values
      * are understood: the 12V battery sensor's state, invalid and error flags, the
@@ -660,7 +681,7 @@ public class MainActivity extends Activity {
     static final String[][] EXTRAS = {
         { "sns_state", "getBATSNSRState" }, { "sns_invalid", "getBATSNSRInvalid" },
         { "sns_error", "getBATSNSRError" }, { "aux_opt", "get_BAT_AuxBattOpt" },
-        { "chg_status", "getChargingStatus" } };
+        { "chg_status", "getChargingStatus" }, { "temp_c_tx", "getTemperatureC" } };
     final Map<String, Integer> txExtra = new HashMap<String, Integer>();
 
     void startVerification() {
@@ -672,7 +693,7 @@ public class MainActivity extends Activity {
 
     /** Returns resolved | saved | known_firmware | override | interface_mismatch | unverified. */
     String verify() {
-        txSoc = txHv = txSoh = -1; txExtra.clear();
+        txSoc = txHv = txSoh = txTempC = -1; txExtra.clear();
         fw = runRoot("getprop ro.build.version.incremental").trim();
         String svcList = runRoot("service list 2>/dev/null");
         if (!svcList.contains("tm_hscan_service: [" + IFACE + "]")) return "interface_mismatch";
@@ -681,9 +702,11 @@ public class MainActivity extends Activity {
         String saved = runRoot("cat " + STATE + "/txn 2>/dev/null");
         if (fw.length() > 0 && fw.equals(kv(saved, "fw")) && parse(kv(saved, "soc"), -1) > 0) {
             txSoc = parse(kv(saved, "soc"), -1); txHv = parse(kv(saved, "hv"), -1); txSoh = parse(kv(saved, "soh"), -1);
+            txTempC = parse(kv(saved, "temp_c_tx"), -1);
             verifySource = kv(saved, "source");
             if ("manual-override".equals(verifySource)) return "override";
             for (String[] x : EXTRAS) { int n = parse(kv(saved, x[0]), -1); if (n > 0) txExtra.put(x[0], n); }
+            if (txTempC <= 0 && txExtra.containsKey("temp_c_tx")) txTempC = txExtra.get("temp_c_tx");
             // saved by a version that didn't look up the extra getters: look them up once
             if (kv(saved, "ext").length() == 0 && verifySource.startsWith("/")) {
                 int soc = txSoc, hv = txHv, soh = txSoh;
@@ -707,7 +730,7 @@ public class MainActivity extends Activity {
         }
 
         // 3. hand-verified firmware
-        // one line per build: <fw> <soc> <hv> <soh>  # comment ("-" = not available)
+        // one line per build: <fw> <soc> <hv> <soh> [<temp_c>]  # comment ("-" = not available)
         for (String line : runRoot("cat " + KNOWN_FILE + " 2>/dev/null").split("\n")) {
             String l = line.trim();
             if (l.length() == 0 || l.startsWith("#")) continue;
@@ -716,6 +739,8 @@ public class MainActivity extends Activity {
             txSoc = parse(f[1], -1);
             txHv = f.length > 2 ? parse(f[2], -1) : -1;
             txSoh = f.length > 3 ? parse(f[3], -1) : -1;
+            txTempC = f.length > 4 ? parse(f[4], -1) : -1;
+            if (txTempC > 0) txExtra.put("temp_c_tx", txTempC);
             verifySource = "known_firmware.txt";
             return "known_firmware";
         }
@@ -778,6 +803,7 @@ public class MainActivity extends Activity {
         txSoc = soc; txHv = hv == null ? -1 : hv; txSoh = soh == null ? -1 : soh;
         txExtra.clear();
         for (String[] x : EXTRAS) { Integer n = m.get(x[1]); if (n != null && n > 0) txExtra.put(x[0], n); }
+        txTempC = txExtra.containsKey("temp_c_tx") ? txExtra.get("temp_c_tx") : -1;
         return true;
     }
 
@@ -924,6 +950,10 @@ public class MainActivity extends Activity {
         // outside temperature: which source the monitor used, and what each source shows now
         String st = runRoot("cat " + STATE + "/status 2>/dev/null");
         d.append("temperature: ").append(kv(st, "temp_c").length() > 0 ? kv(st, "temp_c") + " C via " + kv(st, "temp_src") : "none found").append("\n");
+        if (txTempC > 0) {
+            d.append("service getTemperatureC (tx ").append(txTempC).append("): ")
+                .append(runRoot("service call tm_hscan_service " + txTempC).trim()).append("\n");
+        }
         d.append("climate dump, OutTemp lines:\n").append(firstLines(runRoot("dumpsys com.hkmc.micom.datc 2>&1 | grep -i outtemp"), 8)).append("\n");
         d.append("logcat temperature lines, newest:\n")
             .append(lastLines(runRoot("logcat -d 2>/dev/null | grep -E 'outTemperature|setOutsideTempUIAdvanced'"), 3)).append("\n");
