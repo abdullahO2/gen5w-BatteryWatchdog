@@ -56,8 +56,9 @@ log "[OK] Found telematics service: $SVC"
 # -------------------------------------------------------------
 log "Checking for required functions (getBatSoc)..."
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-PKG_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=${0%/*}
+PKG_DIR=${SCRIPT_DIR%/*}
+[ -d "$PKG_DIR" ] || PKG_DIR=/data/nemesis/apps/battery.watchdog
 APK="$PKG_DIR/app/batterywatchdog.apk"
 KNOWN_FILE="$PKG_DIR/known_firmware.txt"
 FW=$(getprop ro.build.version.incremental 2>/dev/null)
